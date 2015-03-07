@@ -5,7 +5,6 @@ define([
 	"./callbacks",
 	"./deferred",
 	"./core/ready",
-	"./support",
 	"./data",
 	"./queue",
 	"./queue/delay",
@@ -16,24 +15,22 @@ define([
 	"./manipulation/_evalUrl",
 	"./wrap",
 	"./css",
-	"./css/hidden-visible-selectors",
+	"./css/hiddenVisibleSelectors",
 	"./serialize",
 	"./ajax",
 	"./ajax/xhr",
 	"./ajax/script",
 	"./ajax/jsonp",
 	"./ajax/load",
+	"./event/ajax",
 	"./effects",
-	"./effects/animated-selector",
+	"./effects/animatedSelector",
 	"./offset",
 	"./dimensions",
 	"./deprecated",
 	"./exports/amd"
 ], function( jQuery ) {
 
-// Expose jQuery and $ identifiers, even in
-// AMD (#7102#comment:10, https://github.com/jquery/jquery/pull/557)
-// and CommonJS for browser emulators (#13566)
 return (window.jQuery = window.$ = jQuery);
 
 });

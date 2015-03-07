@@ -1,7 +1,9 @@
 define([
 	"../core",
+	"../var/document",
+	"../core/init",
 	"../deferred"
-], function( jQuery ) {
+], function( jQuery, document ) {
 
 // The deferred used on DOM ready
 var readyList;
@@ -50,8 +52,9 @@ jQuery.extend({
 		readyList.resolveWith( document, [ jQuery ] );
 
 		// Trigger any bound ready events
-		if ( jQuery.fn.trigger ) {
-			jQuery( document ).trigger("ready").off("ready");
+		if ( jQuery.fn.triggerHandler ) {
+			jQuery( document ).triggerHandler( "ready" );
+			jQuery( document ).off( "ready" );
 		}
 	}
 });
@@ -70,8 +73,10 @@ jQuery.ready.promise = function( obj ) {
 
 		readyList = jQuery.Deferred();
 
-		// Catch cases where $(document).ready() is called after the browser event has already occurred.
-		// we once tried to use readyState "interactive" here, but it caused issues like the one
+		// Catch cases where $(document).ready() is called
+		// after the browser event has already occurred.
+		// We once tried to use readyState "interactive" here,
+		// but it caused issues like the one
 		// discovered by ChrisS here: http://bugs.jquery.com/ticket/12282#comment:15
 		if ( document.readyState === "complete" ) {
 			// Handle it asynchronously to allow scripts the opportunity to delay ready
@@ -88,5 +93,8 @@ jQuery.ready.promise = function( obj ) {
 	}
 	return readyList.promise( obj );
 };
+
+// Kick off the DOM ready check even if the user does not
+jQuery.ready.promise();
 
 });

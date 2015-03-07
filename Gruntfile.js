@@ -1,15 +1,15 @@
 module.exports = function( grunt ) {
-
 	"use strict";
 
+	function readOptionalJSON( filepath ) {
+		var data = {};
+		try {
+			data = grunt.file.readJSON( filepath );
+		} catch ( e ) {}
+		return data;
+	}
+
 	var gzip = require( "gzip-js" ),
-		readOptionalJSON = function( filepath ) {
-			var data = {};
-			try {
-				data = grunt.file.readJSON( filepath );
-			} catch(e) {}
-			return data;
-		},
 		srcHintOptions = readOptionalJSON( "src/.jshintrc" );
 
 	// The concatenated file won't pass onevar
@@ -17,9 +17,9 @@ module.exports = function( grunt ) {
 	delete srcHintOptions.onevar;
 
 	grunt.initConfig({
-		pkg: grunt.file.readJSON("package.json"),
-		dst: readOptionalJSON("dist/.destination.json"),
-		compare_size: {
+		pkg: grunt.file.readJSON( "package.json" ),
+		dst: readOptionalJSON( "dist/.destination.json" ),
+		"compare_size": {
 			files: [ "dist/jquery.js", "dist/jquery.min.js" ],
 			options: {
 				compress: {
@@ -27,7 +27,7 @@ module.exports = function( grunt ) {
 						return gzip.zip( contents, {} ).length;
 					}
 				},
-				cache: "dist/.sizecache.json"
+				cache: "build/.sizecache.json"
 			}
 		},
 		build: {
@@ -39,10 +39,30 @@ module.exports = function( grunt ) {
 				],
 				// Exclude specified modules if the module matching the key is removed
 				removeWith: {
-					ajax: [ "manipulation/_evalUrl" ],
+					ajax: [ "manipulation/_evalUrl", "event/ajax" ],
 					callbacks: [ "deferred" ],
 					css: [ "effects", "dimensions", "offset" ],
-					sizzle: [ "css/hidden-visible-selectors", "effects/animated-selector" ]
+					sizzle: [ "css/hiddenVisibleSelectors", "effects/animatedSelector" ]
+				}
+			}
+		},
+		npmcopy: {
+			all: {
+				options: {
+					destPrefix: "external"
+				},
+				files: {
+					"sizzle/dist": "sizzle/dist",
+					"sizzle/LICENSE.txt": "sizzle/LICENSE.txt",
+
+					"qunit/qunit.js": "qunitjs/qunit/qunit.js",
+					"qunit/qunit.css": "qunitjs/qunit/qunit.css",
+					"qunit/LICENSE.txt": "qunitjs/LICENSE.txt",
+
+					"requirejs/require.js": "requirejs/require.js",
+
+					"sinon/fake_timers.js": "sinon/lib/sinon/util/fake_timers.js",
+					"sinon/LICENSE.txt": "sinon/LICENSE"
 				}
 			}
 		},
@@ -50,100 +70,98 @@ module.exports = function( grunt ) {
 			pkg: {
 				src: [ "package.json" ]
 			},
+
 			bower: {
 				src: [ "bower.json" ]
 			}
 		},
 		jshint: {
+			all: {
+				src: [
+					"src/**/*.js", "Gruntfile.js", "test/**/*.js", "build/**/*.js"
+				],
+				options: {
+					jshintrc: true
+				}
+			},
 			dist: {
-				src: [ "dist/jquery.js" ],
+				src: "dist/jquery.js",
 				options: srcHintOptions
-			},
-			grunt: {
-				src: [ "Gruntfile.js", "build/tasks/*" ],
-				options: {
-					jshintrc: ".jshintrc"
-				}
-			},
-			tests: {
-				src: [ "test/**/*.js" ],
-				options: {
-					jshintrc: "test/.jshintrc"
-				}
 			}
+		},
+		jscs: {
+			src: "src/**/*.js",
+			gruntfile: "Gruntfile.js",
+
+			// Right now, check only test helpers
+			test: [ "test/data/testrunner.js" ],
+			release: [ "build/*.js", "!build/release-notes.js" ],
+			tasks: "build/tasks/*.js"
 		},
 		testswarm: {
-			tests: "ajax attributes callbacks core css data deferred dimensions effects event manipulation offset queue selector serialize support traversing Sizzle".split(" ")
+			tests: [
+				"ajax",
+				"attributes",
+				"callbacks",
+				"core",
+				"css",
+				"data",
+				"deferred",
+				"dimensions",
+				"effects",
+				"event",
+				"manipulation",
+				"offset",
+				"queue",
+				"selector",
+				"serialize",
+				"support",
+				"traversing"
+			]
 		},
 		watch: {
-			files: [ "<%= jshint.grunt.src %>", "<%= jshint.tests.src %>", "src/**/*.js" ],
-			tasks: "dev"
-		},
-		"pre-uglify": {
-			all: {
-				files: {
-					"dist/jquery.pre-min.js": [ "dist/jquery.js" ]
-				},
-				options: {
-					banner: "\n\n\n\n\n\n\n\n\n\n" + // banner line size must be preserved
-						"/*! jQuery v<%= pkg.version %> | " +
-						"(c) 2005, 2013 jQuery Foundation, Inc. | " +
-						"jquery.org/license\n" +
-						"//@ sourceMappingURL=jquery.min.map\n" +
-						"*/\n"
-				}
-			}
+			files: [ "<%= jshint.all.src %>" ],
+			tasks: [ "dev" ]
 		},
 		uglify: {
 			all: {
 				files: {
-					"dist/jquery.min.js": [ "dist/jquery.pre-min.js" ]
+					"dist/jquery.min.js": [ "dist/jquery.js" ]
 				},
 				options: {
-					// Keep our hard-coded banner
-					preserveComments: "some",
-					sourceMap: "dist/jquery.min.map",
-					sourceMappingURL: "jquery.min.map",
+					preserveComments: false,
+					sourceMap: true,
+					sourceMapName: "dist/jquery.min.map",
 					report: "min",
 					beautify: {
-						ascii_only: true
+						"ascii_only": true
 					},
+					banner: "/*! jQuery v<%= pkg.version %> | " +
+						"(c) jQuery Foundation | jquery.org/license */",
 					compress: {
-						hoist_funs: false,
-						join_vars: false,
+						"hoist_funs": false,
 						loops: false,
 						unused: false
 					}
-				}
-			}
-		},
-		"post-uglify": {
-			all: {
-				files: {
-					"dist/jquery.min.map.tmp": [ "dist/jquery.min.map" ],
-					"dist/jquery.min.js.tmp": [ "dist/jquery.min.js" ]
-				},
-				options: {
-					tempFiles: [ "dist/jquery.min.map.tmp", "dist/jquery.min.js.tmp", "dist/jquery.pre-min.js" ]
 				}
 			}
 		}
 	});
 
 	// Load grunt tasks from NPM packages
-	grunt.loadNpmTasks( "grunt-compare-size" );
-	grunt.loadNpmTasks( "grunt-git-authors" );
-	grunt.loadNpmTasks( "grunt-contrib-watch" );
-	grunt.loadNpmTasks( "grunt-contrib-jshint" );
-	grunt.loadNpmTasks( "grunt-contrib-uglify" );
-	grunt.loadNpmTasks( "grunt-jsonlint" );
+	require( "load-grunt-tasks" )( grunt );
 
 	// Integrate jQuery specific tasks
 	grunt.loadTasks( "build/tasks" );
 
-	// Short list as a high frequency watch task
-	grunt.registerTask( "dev", [ "build:*:*", "jshint" ] );
+	grunt.registerTask( "lint", [ "jsonlint", "jshint", "jscs" ] );
 
-	// Default grunt
-	grunt.registerTask( "default", [ "jsonlint", "dev", "pre-uglify", "uglify", "post-uglify", "dist:*", "compare_size" ] );
+	grunt.registerTask( "test_fast", [ "node_smoke_test" ] );
+
+	grunt.registerTask( "test", [ "test_fast" ] );
+
+	// Short list as a high frequency watch task
+	grunt.registerTask( "dev", [ "build:*:*", "lint", "uglify", "remove_map_comment", "dist:*" ] );
+
+	grunt.registerTask( "default", [ "dev", "test_fast", "compare_size" ] );
 };

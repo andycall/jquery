@@ -1,13 +1,14 @@
 define([
 	"../core",
-	"../support"
-], function( jQuery ) {
+	"../core/access",
+	"./support"
+], function( jQuery, access, support ) {
 
 var rfocusable = /^(?:input|select|textarea|button)$/i;
 
 jQuery.fn.extend({
 	prop: function( name, value ) {
-		return jQuery.access( this, jQuery.prop, name, value, arguments.length > 1 );
+		return access( this, jQuery.prop, name, value, arguments.length > 1 );
 	},
 
 	removeProp: function( name ) {
@@ -27,7 +28,7 @@ jQuery.extend({
 		var ret, hooks, notxml,
 			nType = elem.nodeType;
 
-		// don't get/set properties on text, comment and attribute nodes
+		// Don't get/set properties on text, comment and attribute nodes
 		if ( !elem || nType === 3 || nType === 8 || nType === 2 ) {
 			return;
 		}
@@ -55,17 +56,16 @@ jQuery.extend({
 	propHooks: {
 		tabIndex: {
 			get: function( elem ) {
-				return elem.hasAttribute( "tabindex" ) || rfocusable.test( elem.nodeName ) || elem.href ?
-					elem.tabIndex :
-					-1;
+				return elem.hasAttribute( "tabindex" ) ||
+					rfocusable.test( elem.nodeName ) || elem.href ?
+						elem.tabIndex :
+						-1;
 			}
 		}
 	}
 });
 
-// Support: IE9+
-// Selectedness for an option in an optgroup can be inaccurate
-if ( !jQuery.support.optSelected ) {
+if ( !support.optSelected ) {
 	jQuery.propHooks.selected = {
 		get: function( elem ) {
 			var parent = elem.parentNode;

@@ -1,11 +1,5 @@
 module("core", { teardown: moduleTeardown });
 
-test("Unit Testing Environment", function () {
-	expect(2);
-	ok( hasPHP, "Running in an environment with PHP support. The AJAX tests only run if the environment supports PHP!" );
-	ok( !isLocal, "Unit tests are not ran from file:// (especially in Chrome. If you must test from file:// with Chrome, run it with the --allow-file-access-from-files flag!)" );
-});
-
 test("Basic requirements", function() {
 	expect(7);
 	ok( Array.prototype.push, "Array.push()" );
@@ -63,9 +57,14 @@ test("jQuery()", function() {
 	equal( jQuery(undefined).length, 0, "jQuery(undefined) === jQuery([])" );
 	equal( jQuery(null).length, 0, "jQuery(null) === jQuery([])" );
 	equal( jQuery("").length, 0, "jQuery('') === jQuery([])" );
-	equal( jQuery("#").length, 0, "jQuery('#') === jQuery([])" );
+	deepEqual( jQuery(obj).get(), obj.get(), "jQuery(jQueryObj) == jQueryObj" );
 
-	equal( jQuery(obj).selector, "div", "jQuery(jQueryObj) == jQueryObj" );
+	// Invalid #id goes to Sizzle which will throw an error (gh-1682)
+	try {
+		jQuery( "#" );
+	} catch ( e ) {
+		ok( true, "Threw an error on #id with no id" );
+	}
 
 	// can actually yield more than one, when iframes are included, the window is an array as well
 	equal( jQuery(window).length, 1, "Correct number of elements generated for jQuery(window)" );
@@ -157,49 +156,6 @@ test("jQuery(selector, context)", function() {
 	deepEqual( jQuery("div p", jQuery("#qunit-fixture")).get(), q("sndp", "en", "sap"), "Basic selector with jQuery object as context" );
 });
 
-test( "selector state", function() {
-	expect( 18 );
-
-	var test;
-
-	test = jQuery( undefined );
-	equal( test.selector, "", "Empty jQuery Selector" );
-	equal( test.context, undefined, "Empty jQuery Context" );
-
-	test = jQuery( document );
-	equal( test.selector, "", "Document Selector" );
-	equal( test.context, document, "Document Context" );
-
-	test = jQuery( document.body );
-	equal( test.selector, "", "Body Selector" );
-	equal( test.context, document.body, "Body Context" );
-
-	test = jQuery("#qunit-fixture");
-	equal( test.selector, "#qunit-fixture", "#qunit-fixture Selector" );
-	equal( test.context, document, "#qunit-fixture Context" );
-
-	test = jQuery("#notfoundnono");
-	equal( test.selector, "#notfoundnono", "#notfoundnono Selector" );
-	equal( test.context, document, "#notfoundnono Context" );
-
-	test = jQuery( "#qunit-fixture", document );
-	equal( test.selector, "#qunit-fixture", "#qunit-fixture Selector" );
-	equal( test.context, document, "#qunit-fixture Context" );
-
-	test = jQuery( "#qunit-fixture", document.body );
-	equal( test.selector, "#qunit-fixture", "#qunit-fixture Selector" );
-	equal( test.context, document.body, "#qunit-fixture Context" );
-
-	// Test cloning
-	test = jQuery( test );
-	equal( test.selector, "#qunit-fixture", "#qunit-fixture Selector" );
-	equal( test.context, document.body, "#qunit-fixture Context" );
-
-	test = jQuery( document.body ).find("#qunit-fixture");
-	equal( test.selector, "#qunit-fixture", "#qunit-fixture find Selector" );
-	equal( test.context, document.body, "#qunit-fixture find Context" );
-});
-
 test( "globalEval", function() {
 	expect( 3 );
 	Globals.register("globalEvalTest");
@@ -222,24 +178,40 @@ test( "globalEval with 'use strict'", function() {
 	equal( window.strictEvalTest, 1, "Test variable declarations are global (strict mode)" );
 });
 
-test("noConflict", function() {
-	expect(7);
+test( "globalEval execution after script injection (#7862)", 1, function() {
+	var now,
+		script = document.createElement( "script" );
 
-	var $$ = jQuery;
+	script.src = "data/longLoadScript.php?sleep=2";
 
-	strictEqual( jQuery, jQuery.noConflict(), "noConflict returned the jQuery object" );
-	strictEqual( window["jQuery"], $$, "Make sure jQuery wasn't touched." );
-	strictEqual( window["$"], original$, "Make sure $ was reverted." );
+	now = jQuery.now();
+	document.body.appendChild( script );
 
-	jQuery = $ = $$;
-
-	strictEqual( jQuery.noConflict(true), $$, "noConflict returned the jQuery object" );
-	strictEqual( window["jQuery"], originaljQuery, "Make sure jQuery was reverted." );
-	strictEqual( window["$"], original$, "Make sure $ was reverted." );
-	ok( $$().pushStack([]), "Make sure that jQuery still works." );
-
-	window["jQuery"] = jQuery = $$;
+	jQuery.globalEval( "var strictEvalTest = " + jQuery.now() + ";");
+	ok( window.strictEvalTest - now < 500, "Code executed synchronously" );
 });
+
+// This is not run in AMD mode
+if ( jQuery.noConflict ) {
+	test("noConflict", function() {
+		expect(7);
+
+		var $$ = jQuery;
+
+		strictEqual( jQuery, jQuery.noConflict(), "noConflict returned the jQuery object" );
+		strictEqual( window["jQuery"], $$, "Make sure jQuery wasn't touched." );
+		strictEqual( window["$"], original$, "Make sure $ was reverted." );
+
+		jQuery = $ = $$;
+
+		strictEqual( jQuery.noConflict(true), $$, "noConflict returned the jQuery object" );
+		strictEqual( window["jQuery"], originaljQuery, "Make sure jQuery was reverted." );
+		strictEqual( window["$"], original$, "Make sure $ was reverted." );
+		ok( $$().pushStack([]), "Make sure that jQuery still works." );
+
+		window["jQuery"] = jQuery = $$;
+	});
+}
 
 test("trim", function() {
 	expect(13);
@@ -351,8 +323,9 @@ asyncTest("isPlainObject", function() {
 	ok( pass, "Does not throw exceptions on host objects" );
 
 	// Objects from other windows should be matched
-	window.iframeCallback = function( otherObject, detail ) {
-		window.iframeCallback = undefined;
+	Globals.register("iframeDone");
+	window.iframeDone = function( otherObject, detail ) {
+		window.iframeDone = undefined;
 		iframe.parentNode.removeChild( iframe );
 		ok( jQuery.isPlainObject(new otherObject()), "new otherObject" + ( detail ? " - " + detail : "" ) );
 		start();
@@ -362,7 +335,7 @@ asyncTest("isPlainObject", function() {
 		iframe = jQuery("#qunit-fixture")[0].appendChild( document.createElement("iframe") );
 		doc = iframe.contentDocument || iframe.contentWindow.document;
 		doc.open();
-		doc.write("<body onload='window.parent.iframeCallback(Object);'>");
+		doc.write("<body onload='window.parent.iframeDone(Object);'>");
 		doc.close();
 	} catch(e) {
 		window.iframeDone( Object, "iframes not supported" );
@@ -382,7 +355,6 @@ test("isFunction", function() {
 	ok( !jQuery.isFunction( 0 ), "0 Value" );
 
 	// Check built-ins
-	// Safari uses "(Internal Function)"
 	ok( jQuery.isFunction(String), "String Function("+String+")" );
 	ok( jQuery.isFunction(Array), "Array Function("+Array+")" );
 	ok( jQuery.isFunction(Object), "Object Function("+Object+")" );
@@ -409,7 +381,6 @@ test("isFunction", function() {
 	// Firefox says this is a function
 	ok( !jQuery.isFunction(obj), "Object Element" );
 
-	// IE says this is an object
 	// Since 1.3, this isn't supported (#2968)
 	//ok( jQuery.isFunction(obj.getAttribute), "getAttribute Function" );
 
@@ -427,7 +398,6 @@ test("isFunction", function() {
 	input.type = "text";
 	document.body.appendChild( input );
 
-	// IE says this is an object
 	// Since 1.3, this isn't supported (#2968)
 	//ok( jQuery.isFunction(input.focus), "A default function property" );
 
@@ -459,57 +429,54 @@ test("isFunction", function() {
 });
 
 test( "isNumeric", function() {
-	expect( 36 );
+	expect( 38 );
 
 	var t = jQuery.isNumeric,
-		Traditionalists = /** @constructor */ function(n) {
-			this.value = n;
-			this.toString = function(){
-				return String(this.value);
+		ToString = function( value ) {
+			this.toString = function() {
+				return String( value );
 			};
-		},
-		answer = new Traditionalists( "42" ),
-		rong = new Traditionalists( "Devo" );
+		};
 
-	ok( t("-10"), "Negative integer string");
-	ok( t("0"), "Zero string");
-	ok( t("5"), "Positive integer string");
-	ok( t(-16), "Negative integer number");
-	ok( t(0), "Zero integer number");
-	ok( t(32), "Positive integer number");
-	ok( t("040"), "Octal integer literal string");
-	// OctalIntegerLiteral has been deprecated since ES3/1999
-	// It doesn't pass lint, so disabling until a solution can be found
-	//ok( t(0144), "Octal integer literal");
-	ok( t("0xFF"), "Hexadecimal integer literal string");
-	ok( t(0xFFF), "Hexadecimal integer literal");
-	ok( t("-1.6"), "Negative floating point string");
-	ok( t("4.536"), "Positive floating point string");
-	ok( t(-2.6), "Negative floating point number");
-	ok( t(3.1415), "Positive floating point number");
-	ok( t(8e5), "Exponential notation");
-	ok( t("123e-2"), "Exponential notation string");
-	ok( t(answer), "Custom .toString returning number");
-	equal( t(""), false, "Empty string");
-	equal( t("        "), false, "Whitespace characters string");
-	equal( t("\t\t"), false, "Tab characters string");
-	equal( t("abcdefghijklm1234567890"), false, "Alphanumeric character string");
-	equal( t("xabcdefx"), false, "Non-numeric character string");
-	equal( t(true), false, "Boolean true literal");
-	equal( t(false), false, "Boolean false literal");
-	equal( t("bcfed5.2"), false, "Number with preceding non-numeric characters");
-	equal( t("7.2acdgs"), false, "Number with trailling non-numeric characters");
-	equal( t(undefined), false, "Undefined value");
-	equal( t(null), false, "Null value");
-	equal( t(NaN), false, "NaN value");
-	equal( t(Infinity), false, "Infinity primitive");
-	equal( t(Number.POSITIVE_INFINITY), false, "Positive Infinity");
-	equal( t(Number.NEGATIVE_INFINITY), false, "Negative Infinity");
-	equal( t(rong), false, "Custom .toString returning non-number");
-	equal( t({}), false, "Empty object");
-	equal( t(function(){} ), false, "Instance of a function");
-	equal( t( new Date() ), false, "Instance of a Date");
-	equal( t(function(){} ), false, "Instance of a function");
+	ok( t( "-10" ), "Negative integer string" );
+	ok( t( "0" ), "Zero string" );
+	ok( t( "5" ), "Positive integer string" );
+	ok( t( -16 ), "Negative integer number" );
+	ok( t( 0 ), "Zero integer number" );
+	ok( t( 32 ), "Positive integer number" );
+	ok( t( "040" ), "Octal integer literal string" );
+	ok( t( "0xFF" ), "Hexadecimal integer literal string" );
+	ok( t( 0xFFF ), "Hexadecimal integer literal" );
+	ok( t( "-1.6" ), "Negative floating point string" );
+	ok( t( "4.536" ), "Positive floating point string" );
+	ok( t( -2.6 ), "Negative floating point number" );
+	ok( t( 3.1415 ), "Positive floating point number" );
+	ok( t( 1.5999999999999999 ), "Very precise floating point number" );
+	ok( t( 8e5 ), "Exponential notation" );
+	ok( t( "123e-2" ), "Exponential notation string" );
+	ok( t( new ToString( "42" ) ), "Custom .toString returning number" );
+
+	equal( t( "" ), false, "Empty string" );
+	equal( t( "        " ), false, "Whitespace characters string" );
+	equal( t( "\t\t" ), false, "Tab characters string" );
+	equal( t( "abcdefghijklm1234567890" ), false, "Alphanumeric character string" );
+	equal( t( "xabcdefx" ), false, "Non-numeric character string" );
+	equal( t( true ), false, "Boolean true literal" );
+	equal( t( false ), false, "Boolean false literal" );
+	equal( t( "bcfed5.2" ), false, "Number with preceding non-numeric characters" );
+	equal( t( "7.2acdgs" ), false, "Number with trailling non-numeric characters" );
+	equal( t( undefined ), false, "Undefined value" );
+	equal( t( null ), false, "Null value" );
+	equal( t( NaN ), false, "NaN value" );
+	equal( t( Infinity ), false, "Infinity primitive" );
+	equal( t( Number.POSITIVE_INFINITY ), false, "Positive Infinity" );
+	equal( t( Number.NEGATIVE_INFINITY ), false, "Negative Infinity" );
+	equal( t( new ToString( "Devo" ) ), false, "Custom .toString returning non-number" );
+	equal( t( {} ), false, "Empty object" );
+	equal( t( [] ), false, "Empty array" );
+	equal( t( [ 42 ] ), false, "Array with one number" );
+	equal( t( function(){} ), false, "Instance of a function" );
+	equal( t( new Date() ), false, "Instance of a Date" );
 });
 
 test("isXMLDoc - HTML", function() {
@@ -585,11 +552,10 @@ test("isWindow", function() {
 });
 
 test("jQuery('html')", function() {
-	expect( 15 );
+	expect( 18 );
 
 	var s, div, j;
 
-	QUnit.reset();
 	jQuery["foo"] = false;
 	s = jQuery("<script>jQuery.foo='test';</script>")[0];
 	ok( s, "Creating a script" );
@@ -605,7 +571,6 @@ test("jQuery('html')", function() {
 	equal( div.childNodes[1].nodeType, 1, "Paragraph." );
 	equal( div.childNodes[1].firstChild.nodeType, 3, "Paragraph text." );
 
-	QUnit.reset();
 	ok( jQuery("<link rel='stylesheet'/>")[0], "Creating a link" );
 
 	ok( !jQuery("<script/>")[0].parentNode, "Create a script" );
@@ -620,10 +585,26 @@ test("jQuery('html')", function() {
 	ok( jQuery("<div></div>")[0], "Create a div with closing tag." );
 	ok( jQuery("<table></table>")[0], "Create a table with closing tag." );
 
-	// equal( jQuery("element[attribute='<div></div>']").length, 0, "When html is within brackets, do not recognize as html." );
-	// equal( jQuery("element[attribute=<div></div>]").length, 0, "When html is within brackets, do not recognize as html." );
-	// equal( jQuery("element:not(<div></div>)").length, 0, "When html is within parens, do not recognize as html." );
-	// equal( jQuery("\\<div\\>").length, 0, "Ignore escaped html characters" );
+	equal( jQuery( "element[attribute='<div></div>']" ).length, 0,
+		"When html is within brackets, do not recognize as html." );
+	//equal( jQuery( "element[attribute=<div></div>]" ).length, 0,
+	//	"When html is within brackets, do not recognize as html." );
+	equal( jQuery( "element:not(<div></div>)" ).length, 0,
+		"When html is within parens, do not recognize as html." );
+	equal( jQuery( "\\<div\\>" ).length, 0, "Ignore escaped html characters" );
+});
+
+test("jQuery(tag-hyphenated elements) gh-1987", function() {
+	expect( 17 );
+
+	jQuery.each( "thead tbody tfoot colgroup caption tr th td".split(" "), function( i, name ) {
+		var j = jQuery("<" + name + "-d></" + name + "-d>");
+		ok( j[0], "Create a tag-hyphenated elements" );
+		ok( jQuery.nodeName(j[0], name.toUpperCase() + "-D"), "Tag-hyphenated element has expected node name" );
+	});
+
+	var j = jQuery("<tr-multiple-hyphens></tr-multiple-hyphens>");
+	ok( jQuery.nodeName(j[0], "TR-MULTIPLE-HYPHENS"), "Element with multiple hyphens in its tag has expected node name" );
 });
 
 test("jQuery('massive html #7990')", function() {
@@ -903,25 +884,85 @@ test("jQuery.map", function() {
 });
 
 test("jQuery.merge()", function() {
-	expect(8);
+	expect( 10 );
 
-	deepEqual( jQuery.merge([],[]), [], "Empty arrays" );
+	deepEqual(
+		jQuery.merge( [], [] ),
+		[],
+		"Empty arrays"
+	);
 
-	deepEqual( jQuery.merge([ 1 ],[ 2 ]), [ 1, 2 ], "Basic" );
-	deepEqual( jQuery.merge([ 1, 2 ], [ 3, 4 ]), [ 1, 2, 3, 4 ], "Basic" );
+	deepEqual(
+		jQuery.merge( [ 1 ], [ 2 ] ),
+		[ 1, 2 ],
+		"Basic (single-element)"
+	);
+	deepEqual(
+		jQuery.merge( [ 1, 2 ], [ 3, 4 ] ),
+		[ 1, 2, 3, 4 ],
+		"Basic (multiple-element)"
+	);
 
-	deepEqual( jQuery.merge([ 1, 2 ],[]), [ 1, 2 ], "Second empty" );
-	deepEqual( jQuery.merge([],[ 1, 2 ]), [ 1, 2 ], "First empty" );
+	deepEqual(
+		jQuery.merge( [ 1, 2 ], [] ),
+		[ 1, 2 ],
+		"Second empty"
+	);
+	deepEqual(
+		jQuery.merge( [], [ 1, 2 ] ),
+		[ 1, 2 ],
+		"First empty"
+	);
 
 	// Fixed at [5998], #3641
-	deepEqual( jQuery.merge([ -2, -1 ], [ 0, 1, 2 ]), [ -2, -1 , 0, 1, 2 ],
-		"Second array including a zero (falsy)");
+	deepEqual(
+		jQuery.merge( [ -2, -1 ], [ 0, 1, 2 ] ),
+		[ -2, -1 , 0, 1, 2 ],
+		"Second array including a zero (falsy)"
+	);
 
 	// After fixing #5527
-	deepEqual( jQuery.merge([], [ null, undefined ]), [ null, undefined ],
-		"Second array including null and undefined values");
-	deepEqual( jQuery.merge({ length: 0 }, [ 1, 2 ] ), { length: 2, 0: 1, 1: 2},
-		"First array like");
+	deepEqual(
+		jQuery.merge( [], [ null, undefined ] ),
+		[ null, undefined ],
+		"Second array including null and undefined values"
+	);
+	deepEqual(
+		jQuery.merge( { length: 0 }, [ 1, 2 ] ),
+		{ length: 2, 0: 1, 1: 2 },
+		"First array like"
+	);
+	deepEqual(
+		jQuery.merge( [ 1, 2 ], { length: 1, 0: 3 } ),
+		[ 1, 2, 3 ],
+		"Second array like"
+	);
+
+	deepEqual(
+		jQuery.merge( [], document.getElementById("lengthtest").getElementsByTagName("input") ),
+		[ document.getElementById("length"), document.getElementById("idTest") ],
+		"Second NodeList"
+	);
+});
+
+test("jQuery.grep()", function() {
+	expect(8);
+
+	var searchCriterion = function( value ) {
+		return value % 2 === 0;
+	};
+
+	deepEqual( jQuery.grep( [], searchCriterion ), [], "Empty array" );
+	deepEqual( jQuery.grep( new Array(4), searchCriterion ), [], "Sparse array" );
+
+	deepEqual( jQuery.grep( [ 1, 2, 3, 4, 5, 6 ], searchCriterion ), [ 2, 4, 6 ], "Satisfying elements present" );
+	deepEqual( jQuery.grep( [ 1, 3, 5, 7], searchCriterion ), [], "Satisfying elements absent" );
+
+	deepEqual( jQuery.grep( [ 1, 2, 3, 4, 5, 6 ], searchCriterion, true ), [ 1, 3, 5 ], "Satisfying elements present and grep inverted" );
+	deepEqual( jQuery.grep( [ 1, 3, 5, 7], searchCriterion, true ), [1, 3, 5, 7], "Satisfying elements absent and grep inverted" );
+
+	deepEqual( jQuery.grep( [ 1, 2, 3, 4, 5, 6 ], searchCriterion, false ), [ 2, 4, 6 ], "Satisfying elements present but grep explicitly uninverted" );
+	deepEqual( jQuery.grep( [ 1, 3, 5, 7 ], searchCriterion, false ), [], "Satisfying elements absent and grep explicitly uninverted" );
 });
 
 test("jQuery.extend(Object, Object)", function() {
@@ -1158,7 +1199,7 @@ test("jQuery.each(Object,Function)", function() {
 	jQuery.each( document.styleSheets, function() {
 		i++;
 	});
-	equal( i, 2, "Iteration over document.styleSheets" );
+	equal( i, document.styleSheets.length, "Iteration over document.styleSheets" );
 });
 
 test("jQuery.makeArray", function(){
@@ -1260,14 +1301,19 @@ test("jQuery.proxy", function(){
 });
 
 test("jQuery.parseHTML", function() {
-	expect( 18 );
+	expect( 23 );
 
 	var html, nodes;
 
-	equal( jQuery.parseHTML(), null, "Nothing in, null out." );
-	equal( jQuery.parseHTML( null ), null, "Null in, null out." );
-	equal( jQuery.parseHTML( "" ), null, "Empty string in, null out." );
-	raises(function() {
+	deepEqual( jQuery.parseHTML(), [], "Without arguments" );
+	deepEqual( jQuery.parseHTML( undefined ), [], "Undefined" );
+	deepEqual( jQuery.parseHTML( null ), [], "Null" );
+	deepEqual( jQuery.parseHTML( false ), [], "Boolean false" );
+	deepEqual( jQuery.parseHTML( 0 ), [], "Zero" );
+	deepEqual( jQuery.parseHTML( true ), [], "Boolean true" );
+	deepEqual( jQuery.parseHTML( 42 ), [], "Positive number" );
+	deepEqual( jQuery.parseHTML( "" ), [], "Empty string" );
+	throws(function() {
 		jQuery.parseHTML( "<div></div>", document.getElementById("form") );
 	}, "Passing an element as the context raises an exception (context should be a document)");
 
@@ -1299,28 +1345,107 @@ test("jQuery.parseHTML", function() {
 	ok( jQuery.parseHTML("<#if><tr><p>This is a test.</p></tr><#/if>") || true, "Garbage input should not cause error" );
 });
 
-test("jQuery.parseJSON", function(){
-	expect( 9 );
+if ( jQuery.support.createHTMLDocument ) {
+	asyncTest("jQuery.parseHTML", function() {
+		expect ( 1 );
 
-	equal( jQuery.parseJSON( null ), null, "Actual null returns null" );
-	equal( jQuery.isEmptyObject( jQuery.parseJSON("{}") ), true, "Empty object returns empty object" );
-	deepEqual( jQuery.parseJSON("{\"test\":1}"), { "test": 1 }, "Plain object parses" );
-	deepEqual( jQuery.parseJSON("\n{\"test\":1}"), { "test": 1 }, "Leading whitespaces are ignored." );
-	raises(function() {
+		Globals.register("parseHTMLError");
+
+		jQuery.globalEval("parseHTMLError = false;");
+		jQuery.parseHTML( "<img src=x onerror='parseHTMLError = true'>" );
+
+		window.setTimeout(function() {
+			start();
+			equal( window.parseHTMLError, false, "onerror eventhandler has not been called." );
+		}, 2000);
+	});
+}
+
+test("jQuery.parseJSON", function() {
+	expect( 20 );
+
+	strictEqual( jQuery.parseJSON( null ), null, "primitive null" );
+	strictEqual( jQuery.parseJSON("0.88"), 0.88, "Number" );
+	strictEqual(
+		jQuery.parseJSON("\" \\\" \\\\ \\/ \\b \\f \\n \\r \\t \\u007E \\u263a \""),
+		" \" \\ / \b \f \n \r \t ~ \u263A ",
+		"String escapes"
+	);
+	deepEqual( jQuery.parseJSON("{}"), {}, "Empty object" );
+	deepEqual( jQuery.parseJSON("{\"test\":1}"), { "test": 1 }, "Plain object" );
+	deepEqual( jQuery.parseJSON("[0]"), [ 0 ], "Simple array" );
+
+	deepEqual(
+		jQuery.parseJSON("[ \"string\", -4.2, 2.7180e0, 3.14E-1, {}, [], true, false, null ]"),
+		[ "string", -4.2, 2.718, 0.314, {}, [], true, false, null ],
+		"Array of all data types"
+	);
+	deepEqual(
+		jQuery.parseJSON( "{ \"string\": \"\", \"number\": 4.2e+1, \"object\": {}," +
+			"\"array\": [[]], \"boolean\": [ true, false ], \"null\": null }"),
+		{ string: "", number: 42, object: {}, array: [[]], boolean: [ true, false ], "null": null },
+		"Dictionary of all data types"
+	);
+
+	deepEqual( jQuery.parseJSON("\n{\"test\":1}\t"), { "test": 1 },
+		"Leading and trailing whitespace are ignored" );
+
+	throws(function() {
 		jQuery.parseJSON();
 	}, null, "Undefined raises an error" );
-	raises( function() {
+	throws(function() {
 		jQuery.parseJSON( "" );
 	}, null, "Empty string raises an error" );
-	raises(function() {
+	throws(function() {
 		jQuery.parseJSON("''");
 	}, null, "Single-quoted string raises an error" );
-	raises(function() {
+	/*
+
+	// Broken on IE8
+	throws(function() {
+		jQuery.parseJSON("\" \\a \"");
+	}, null, "Invalid string escape raises an error" );
+
+	// Broken on IE8, Safari 5.1 Windows
+	throws(function() {
+		jQuery.parseJSON("\"\t\"");
+	}, null, "Unescaped control character raises an error" );
+
+	// Broken on IE8
+	throws(function() {
+		jQuery.parseJSON(".123");
+	}, null, "Number with no integer component raises an error" );
+
+	*/
+	throws(function() {
+		var result = jQuery.parseJSON("0101");
+
+		// Support: IE9+
+		// Ensure base-10 interpretation on browsers that erroneously accept leading-zero numbers
+		if ( result === 101 ) {
+			throw new Error("close enough");
+		}
+	}, null, "Leading-zero number raises an error or is parsed as decimal" );
+	throws(function() {
 		jQuery.parseJSON("{a:1}");
 	}, null, "Unquoted property raises an error" );
-	raises(function() {
+	throws(function() {
 		jQuery.parseJSON("{'a':1}");
 	}, null, "Single-quoted property raises an error" );
+	throws(function() {
+		jQuery.parseJSON("[,]");
+	}, null, "Array element elision raises an error" );
+	throws(function() {
+		jQuery.parseJSON("{},[]");
+	}, null, "Comma expression raises an error" );
+	throws(function() {
+		jQuery.parseJSON("[]\n,{}");
+	}, null, "Newline-containing comma expression raises an error" );
+	throws(function() {
+		jQuery.parseJSON("\"\"\n\"\"");
+	}, null, "Automatic semicolon insertion raises an error" );
+
+	strictEqual( jQuery.parseJSON([ 0 ]), 0, "Input cast to string" );
 });
 
 test("jQuery.parseXML", 8, function(){
@@ -1381,7 +1506,26 @@ testIframeWithCallback( "Conditional compilation compatibility (#13274)", "core/
 	ok( $(), "jQuery executes" );
 });
 
-testIframeWithCallback( "document ready when jQuery loaded asynchronously (#13655)", "core/dynamic_ready.html", function( ready ) {
-	expect( 1 );
-	equal( true, ready, "document ready correctly fired when jQuery is loaded after DOMContentLoaded" );
-});
+// iOS7 doesn't fire the load event if the long-loading iframe gets its source reset to about:blank.
+// This makes this test fail but it doesn't seem to cause any real-life problems so blacklisting
+// this test there is preferred to complicating the hard-to-test core/ready code further.
+if ( !/iphone os 7_/i.test( navigator.userAgent ) ) {
+	testIframeWithCallback( "document ready when jQuery loaded asynchronously (#13655)", "core/dynamic_ready.html", function( ready ) {
+		expect( 1 );
+		equal( true, ready, "document ready correctly fired when jQuery is loaded after DOMContentLoaded" );
+	});
+}
+
+testIframeWithCallback( "Tolerating alias-masked DOM properties (#14074)", "core/aliased.html",
+	function( errors ) {
+			expect( 1 );
+			deepEqual( errors, [], "jQuery loaded" );
+	}
+);
+
+testIframeWithCallback( "Don't call window.onready (#14802)", "core/onready.html",
+	function( error ) {
+			expect( 1 );
+			equal( error, false, "no call to user-defined onready" );
+	}
+);
